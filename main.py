@@ -17,7 +17,7 @@ class DiscordBot(commands.Bot):
         intents.guilds = True
         
         super().__init__(
-            command_prefix=self.get_prefix_sync,
+            command_prefix='.',
             intents=intents,
             help_command=None,
             case_insensitive=True
@@ -28,6 +28,7 @@ class DiscordBot(commands.Bot):
         self.web_server = None
         
     def get_prefix_sync(self, message):
+        """Synchronous prefix function for bot initialization"""
         return '.'
         
     async def get_prefix(self, message):
@@ -57,20 +58,27 @@ class DiscordBot(commands.Bot):
         
     async def setup_hook(self):
         # Connect to database
-        try:
-            self.db = await asyncpg.create_pool(os.getenv('DATABASE_URL'))
-            await self.create_tables()
-            print("Database connected successfully!")
-        except Exception as e:
-            print(f"Database connection failed: {e}")
+        database_url = os.getenv('DATABASE_URL')
+        if database_url:
+            try:
+                self.db = await asyncpg.create_pool(database_url)
+                await self.create_tables()
+                print("Database connected successfully!")
+            except Exception as e:
+                print(f"Database connection failed: {e}")
+                self.db = None
+        else:
+            print("No DATABASE_URL found - running without database")
+            self.db = None
             
-        # Load cogs
-        await self.load_extension('cogs.help')
-        await self.load_extension('cogs.moderation')  
-        await self.load_extension('cogs.leveling')
-        await self.load_extension('cogs.automod')
-        await self.load_extension('cogs.welcome')
-        await self.load_extension('cogs.games')
+        # Load cogs with error handling
+        cogs_to_load = ['cogs.help', 'cogs.moderation', 'cogs.leveling', 'cogs.automod', 'cogs.welcome', 'cogs.games']
+        for cog in cogs_to_load:
+            try:
+                await self.load_extension(cog)
+                print(f"Loaded {cog}")
+            except Exception as e:
+                print(f"Failed to load {cog}: {e}")
         
         # Start web server for health checks
         await self.start_web_server()
@@ -197,8 +205,12 @@ class DiscordBot(commands.Bot):
         
         while not self.is_closed():
             try:
-                # Get the external URL from environment (Render sets RENDER_EXTERNAL_URL)
-                url = os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')
+                # Get the external URL from environment
+                url = os.getenv('RENDER_EXTERNAL_URL')
+                if not url:
+                    # Skip self-ping if no external URL is set
+                    await asyncio.sleep(840)
+                    continue
                 
                 timeout = aiohttp.ClientTimeout(total=10)
                 async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -236,7 +248,7 @@ if __name__ == "__main__":
     @bot.tree.command(name="prefix", description="Change the bot's prefix for this server")
     @discord.app_commands.describe(new_prefix="The new prefix to use")
     async def change_prefix(interaction: discord.Interaction, new_prefix: str):
-        if not interaction.user.guild_permissions or not interaction.user.guild_permissions.manage_guild:
+        if not interaction.user.guild_permissions.manage_guild:
             embed = discord.Embed(
                 title="❌ Permission Denied",
                 description="You need `Manage Server` permission to change the prefix.",
