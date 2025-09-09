@@ -14,6 +14,15 @@ class AutoMod(commands.Cog):
         
     async def get_automod_settings(self, guild_id):
         """Get automod settings for a guild"""
+        if not self.bot.db:
+            return {
+                'warnings_enabled': False,
+                'discord_links_enabled': False,
+                'spam_enabled': False,
+                'spam_messages': 5,
+                'spam_time': 10,
+                'nsfw_enabled': False
+            }
         try:
             async with self.bot.db.acquire() as conn:
                 settings = await conn.fetchrow(
@@ -197,6 +206,9 @@ class AutoMod(commands.Cog):
     
     async def add_warning(self, user, guild, reason):
         """Add a warning to the database and execute warning actions"""
+        if not self.bot.db:
+            print(f"Cannot add warning - no database connection")
+            return
         try:
             async with self.bot.db.acquire() as conn:
                 await conn.execute(
